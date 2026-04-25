@@ -1,0 +1,195 @@
+version: "3.8"
+
+# Single-host dev stack — no Swarm needed.
+# Usage: cp .env.example .env && docker compose -f docker-compose.dev.yml up -d
+
+x-healthcheck-defaults: &hc-defaults
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 30s
+
+services:
+
+  # ── Databases ───────────────────────────────────────────────────────────────
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_user}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - db-net
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth_user}"]
+
+  data-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DATA_DB_USER:-data_user}
+      POSTGRES_PASSWORD: ${DATA_DB_PASSWORD}
+      POSTGRES_DB: ${DATA_DB_NAME:-data_db}
+    volumes:
+      - data-db-data:/var/lib/postgresql/data
+    networks:
+      - db-net
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "pg_isready -U ${DATA_DB_USER:-data_user}"]
+
+  # ── Application Services ─────────────────────────────────────────────────────
+
+  auth-service:
+    image: florinionita/trackit-auth-service:${AUTH_IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DB_NAME:-auth_db}
+      SPRING_DATASOURCE_USERNAME: ${AUTH_DB_USER:-auth_user}
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${AUTH_JWT_SECRET}
+      SERVER_PORT: 8081
+    networks:
+      - frontend-net
+      - db-net
+      - monitoring-net
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+
+  business-logic-service:
+    image: florinionita/trackit-business-logic-service:${BUSINESS_IMAGE_TAG:-latest}
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      DATA_SERVICE_URL: http://data-service:8083
+      SERVER_PORT: 8082
+    networks:
+      - frontend-net
+      - backend-net
+      - monitoring-net
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+
+  data-service:
+    image: florinionita/trackit-data-service:${DATA_IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://data-db:5432/${DATA_DB_NAME:-data_db}
+      SPRING_DATASOURCE_USERNAME: ${DATA_DB_USER:-data_user}
+      SPRING_DATASOURCE_PASSWORD: ${DATA_DB_PASSWORD}
+      SERVER_PORT: 8083
+    networks:
+      - backend-net
+      - db-net
+      - monitoring-net
+    depends_on:
+      data-db:
+        condition: service_healthy
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+
+  # ── API Gateway ──────────────────────────────────────────────────────────────
+
+  kong:
+    image: kong:3
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+    volumes:
+      - ../kong/kong.yml:/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    networks:
+      - frontend-net
+      - monitoring-net
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      business-logic-service:
+        condition: service_healthy
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD-SHELL", "kong health"]
+
+  # ── Admin Tools ──────────────────────────────────────────────────────────────
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@trackit.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ../pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    networks:
+      - db-net
+
+  # ── Observability ────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring-net
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring-net
+    depends_on:
+      - prometheus
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+
+volumes:
+  auth-db-data:
+  data-db-data:
+  pgadmin-data:
+  prometheus-data:
+  grafana-data:
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+  db-net:
+    driver: bridge
+  monitoring-net:
+    driver: bridge

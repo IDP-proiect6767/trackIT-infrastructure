@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'TrackIT'
+    orgId: 1
+    folder: 'TrackIT'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

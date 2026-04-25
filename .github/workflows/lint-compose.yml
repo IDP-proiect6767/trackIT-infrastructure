@@ -1,0 +1,27 @@
+name: Lint Compose
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Validate Compose & Stack files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate dev compose
+        run: docker compose -f compose/docker-compose.dev.yml config -q
+
+      - name: Validate stack-trackit
+        run: docker compose -f stacks/stack-trackit.yml config -q
+
+      - name: Validate stack-monitoring
+        run: docker compose -f stacks/stack-monitoring.yml config -q
+
+      - name: Validate stack-portainer
+        run: docker compose -f stacks/stack-portainer.yml config -q
+
+      - name: Validate stack-pgadmin
+        run: docker compose -f stacks/stack-pgadmin.yml config -q

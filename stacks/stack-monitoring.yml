@@ -1,0 +1,78 @@
+version: "3.8"
+
+# Monitoring stack — deploy with: docker stack deploy -c stack-monitoring.yml monitoring
+# monitoring-net overlay must already exist (swarm/create-networks.sh).
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus-data:/prometheus
+    ports:
+      - target: 9090
+        published: 9090
+        protocol: tcp
+        mode: host
+    networks:
+      - monitoring-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      - source: grafana-dashboards-config
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: host
+    networks:
+      - monitoring-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+configs:
+  prometheus-config:
+    file: ../prometheus/prometheus.yml
+  grafana-datasources:
+    file: ../grafana/provisioning/datasources/prometheus.yml
+  grafana-dashboards-config:
+    file: ../grafana/provisioning/dashboards/dashboards.yml
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  monitoring-net:
+    external: true

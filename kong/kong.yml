@@ -1,0 +1,71 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: auth-service
+    url: http://auth-service:8081
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/v1/auth
+          - /api/v1/users
+          - /api/v1/admin/users
+        strip_path: false
+
+  - name: business-logic-service
+    url: http://business-logic-service:8082
+    routes:
+      - name: business-routes
+        paths:
+          - /api/v1/workouts
+          - /api/v1/exercises
+          - /api/v1/workout-logs
+          - /api/v1/foods
+          - /api/v1/meals
+          - /api/v1/stats
+          - /api/v1/dashboard
+          - /api/v1/users/me/goals
+        strip_path: false
+
+plugins:
+  # Global rate limit: 100 req/min per IP
+  - name: rate-limiting
+    config:
+      minute: 100
+      policy: local
+      limit_by: ip
+      fault_tolerant: true
+
+  # Tighter rate limit on auth routes to slow brute force
+  - name: rate-limiting
+    route: auth-routes
+    config:
+      minute: 20
+      policy: local
+      limit_by: ip
+      fault_tolerant: true
+
+  # CORS for browser clients
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+      credentials: false
+      max_age: 3600
+
+  # Request logging (stdout)
+  - name: file-log
+    config:
+      path: /dev/stdout
+
+  # Prometheus metrics on admin port :8001/metrics
+  - name: prometheus

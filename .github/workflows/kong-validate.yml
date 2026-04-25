@@ -1,0 +1,23 @@
+name: Kong Validate
+
+on:
+  push:
+    paths:
+      - "kong/**"
+  pull_request:
+    paths:
+      - "kong/**"
+
+jobs:
+  validate:
+    name: Validate Kong declarative config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse kong.yml
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/kong:/kong" \
+            kong:3 \
+            kong config -c /kong/kong.yml parse /kong/kong.yml

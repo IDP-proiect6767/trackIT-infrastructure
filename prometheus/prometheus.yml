@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'auth-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['auth-service:8081']
+
+  - job_name: 'business-logic-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['business-logic-service:8082']
+
+  - job_name: 'data-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['data-service:8083']
+
+  # Kong exposes /metrics on admin port when the prometheus plugin is enabled (see kong/kong.yml)
+  - job_name: 'kong'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['kong:8001']

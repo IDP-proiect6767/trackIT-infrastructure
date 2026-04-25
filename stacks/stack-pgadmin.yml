@@ -1,0 +1,45 @@
+version: "3.8"
+
+# pgAdmin 4 — deploy with: docker stack deploy -c stack-pgadmin.yml pgadmin
+
+services:
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@trackit.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    configs:
+      - source: pgadmin-servers
+        target: /pgadmin4/servers.json
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - target: 80
+        published: 5050
+        protocol: tcp
+        mode: host
+    networks:
+      - db-net
+      - monitoring-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+configs:
+  pgadmin-servers:
+    file: ../pgadmin/servers.json
+
+volumes:
+  pgadmin-data:
+    driver: local
+
+networks:
+  db-net:
+    external: true
+  monitoring-net:
+    external: true

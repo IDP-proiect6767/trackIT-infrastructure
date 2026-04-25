@@ -1,0 +1,208 @@
+version: "3.8"
+
+# Swarm stack — deploy with: docker stack deploy -c stack-trackit.yml trackit
+# All four overlay networks must already exist (swarm/create-networks.sh).
+# Env vars are sourced from stacks/.env via deploy-trackit.sh.
+
+x-deploy-defaults: &deploy-defaults
+  restart_policy:
+    condition: on-failure
+    delay: 10s
+    max_attempts: 5
+
+services:
+
+  # ── Databases ──────────────────────────────────────────────────────────────
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_user}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - db-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth_user}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == auth
+
+  data-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DATA_DB_USER:-data_user}
+      POSTGRES_PASSWORD: ${DATA_DB_PASSWORD}
+      POSTGRES_DB: ${DATA_DB_NAME:-data_db}
+    volumes:
+      - data-db-data:/var/lib/postgresql/data
+    networks:
+      - db-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATA_DB_USER:-data_user}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == app
+
+  # ── Application Services ───────────────────────────────────────────────────
+
+  auth-service:
+    image: florinionita/trackit-auth-service:${AUTH_IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DB_NAME:-auth_db}
+      SPRING_DATASOURCE_USERNAME: ${AUTH_DB_USER:-auth_user}
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${AUTH_JWT_SECRET}
+      SERVER_PORT: 8081
+    networks:
+      - frontend-net
+      - db-net
+      - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == auth
+      update_config:
+        parallelism: 1
+        order: start-first
+        delay: 10s
+
+  business-logic-service:
+    image: florinionita/trackit-business-logic-service:${BUSINESS_IMAGE_TAG:-latest}
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      DATA_SERVICE_URL: http://data-service:8083
+      SERVER_PORT: 8082
+    networks:
+      - frontend-net
+      - backend-net
+      - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == app
+      update_config:
+        parallelism: 1
+        order: start-first
+        delay: 10s
+
+  data-service:
+    image: florinionita/trackit-data-service:${DATA_IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://data-db:5432/${DATA_DB_NAME:-data_db}
+      SPRING_DATASOURCE_USERNAME: ${DATA_DB_USER:-data_user}
+      SPRING_DATASOURCE_PASSWORD: ${DATA_DB_PASSWORD}
+      SERVER_PORT: 8083
+    networks:
+      # NOT on frontend-net — defense-in-depth
+      - backend-net
+      - db-net
+      - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.role == app
+      update_config:
+        parallelism: 1
+        order: start-first
+        delay: 10s
+
+  # ── API Gateway ────────────────────────────────────────────────────────────
+
+  kong:
+    image: kong:3
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      # Admin API only on loopback in prod — not published externally
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+    configs:
+      - source: kong-config
+        target: /kong/kong.yml
+    ports:
+      - target: 8000
+        published: 8000
+        protocol: tcp
+        mode: host
+    networks:
+      - frontend-net
+      - monitoring-net
+    deploy:
+      <<: *deploy-defaults
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      update_config:
+        parallelism: 1
+        order: start-first
+
+# ── Configs ────────────────────────────────────────────────────────────────
+
+configs:
+  kong-config:
+    file: ../kong/kong.yml
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+
+volumes:
+  auth-db-data:
+    driver: local
+  data-db-data:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────────────
+
+networks:
+  frontend-net:
+    external: true
+  backend-net:
+    external: true
+  db-net:
+    external: true
+  monitoring-net:
+    external: true

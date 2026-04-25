@@ -1,0 +1,7 @@
+.env
+.env.local
+*.log
+*.pid
+.idea/
+.vscode/
+swarm/.swarm-state
