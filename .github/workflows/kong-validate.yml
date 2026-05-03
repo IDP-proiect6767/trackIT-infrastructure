@@ -18,6 +18,7 @@ jobs:
       - name: Parse kong.yml
         run: |
           docker run --rm \
+            -e KONG_DATABASE=off \
             -v "${{ github.workspace }}/kong:/kong" \
             kong:3 \
             kong config parse /kong/kong.yml
