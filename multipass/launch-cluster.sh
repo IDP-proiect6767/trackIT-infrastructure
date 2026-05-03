@@ -24,7 +24,7 @@ launch_vm() {
         "$IMAGE"
     echo "    Waiting for Docker on $name..."
     # Retry up to 30s for Docker to be available
-    for i in $(seq 1 30); do
+    for _ in $(seq 1 30); do
         if multipass exec "$name" -- docker --version > /dev/null 2>&1; then
             break
         fi

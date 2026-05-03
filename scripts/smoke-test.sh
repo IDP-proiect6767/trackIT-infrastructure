@@ -52,7 +52,6 @@ HTTP_CODE=$(echo "$LOGIN_RESP" | tail -1)
 [[ "$HTTP_CODE" == "200" ]] || fail "Expected 200, got $HTTP_CODE"
 TOKEN=$(echo "$LOGIN_RESP" | head -1 | jq -r '.tokens.accessToken // empty')
 [[ -n "$TOKEN" ]] || fail "Could not extract token from login response: $(echo "$LOGIN_RESP" | head -1)"
-REFRESH_TOKEN=$(echo "$LOGIN_RESP" | head -1 | jq -r '.tokens.refreshToken // empty')
 pass "Login OK, token extracted"
 
 AUTH_HEADER="Authorization: Bearer $TOKEN"

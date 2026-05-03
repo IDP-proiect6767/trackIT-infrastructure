@@ -10,8 +10,10 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
+set -a
 # shellcheck source=/dev/null
-set -a; source "$ENV_FILE"; set +a
+source "$ENV_FILE"
+set +a
 
 echo "==> Deploying TrackIT app stack..."
 docker stack deploy \

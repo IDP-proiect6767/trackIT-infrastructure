@@ -20,4 +20,4 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}/kong:/kong" \
             kong:3 \
-            kong config -c /kong/kong.yml parse /kong/kong.yml
+            kong config parse /kong/kong.yml
