@@ -6,26 +6,27 @@ DB-less mode with declarative config. All routing, rate limiting, CORS, and logg
 
 ```bash
 docker run --rm \
+  -e KONG_DATABASE=off \
   -v "$(pwd)/kong.yml:/kong/kong.yml" \
   kong:3 kong config -c /kong/kong.yml parse /kong/kong.yml
 ```
 
 ## Routes summary
 
-| Route group | Paths | Backend |
-|---|---|---|
-| auth-routes | `/api/v1/auth`, `/api/v1/users`, `/api/v1/admin/users` | auth-service:8081 |
+| Route group     | Paths                                                                                                                                                             | Backend                     |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| auth-routes     | `/api/v1/auth`, `/api/v1/users`, `/api/v1/admin/users`                                                                                                            | auth-service:8081           |
 | business-routes | `/api/v1/workouts`, `/api/v1/exercises`, `/api/v1/workout-logs`, `/api/v1/foods`, `/api/v1/meals`, `/api/v1/stats`, `/api/v1/dashboard`, `/api/v1/users/me/goals` | business-logic-service:8082 |
 
 ## Plugins
 
-| Plugin | Scope | Config |
-|---|---|---|
-| `rate-limiting` | Global | 100 req/min per IP |
+| Plugin          | Scope       | Config                                     |
+| --------------- | ----------- | ------------------------------------------ |
+| `rate-limiting` | Global      | 100 req/min per IP                         |
 | `rate-limiting` | auth-routes | 20 req/min per IP (brute-force protection) |
-| `cors` | Global | `*` origins, standard methods |
-| `file-log` | Global | stdout |
-| `prometheus` | Global | metrics at `:8001/metrics` |
+| `cors`          | Global      | `*` origins, standard methods              |
+| `file-log`      | Global      | stdout                                     |
+| `prometheus`    | Global      | metrics at `:8001/metrics`                 |
 
 ## Notes
 
