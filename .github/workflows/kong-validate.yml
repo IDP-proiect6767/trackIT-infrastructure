@@ -15,10 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Parse kong.yml
+      - name: Install deck
         run: |
-          docker run --rm \
-            -e KONG_DATABASE=off \
-            -v "${{ github.workspace }}/kong:/kong" \
-            kong:3 \
-            kong config parse /kong/kong.yml
+          curl -sL https://github.com/kong/deck/releases/download/v1.38.1/deck_1.38.1_linux_amd64.tar.gz \
+            | tar -xz -C /usr/local/bin deck
+
+      - name: Validate kong.yml
+        run: deck file validate kong/kong.yml
