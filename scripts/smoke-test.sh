@@ -50,21 +50,25 @@ LOGIN_RESP=$(curl -sf -w "\n%{http_code}" \
     || fail "curl failed")
 HTTP_CODE=$(echo "$LOGIN_RESP" | tail -1)
 [[ "$HTTP_CODE" == "200" ]] || fail "Expected 200, got $HTTP_CODE"
-TOKEN=$(echo "$LOGIN_RESP" | head -1 | jq -r '.accessToken // .token // .access_token // empty')
+TOKEN=$(echo "$LOGIN_RESP" | head -1 | jq -r '.tokens.accessToken // empty')
 [[ -n "$TOKEN" ]] || fail "Could not extract token from login response: $(echo "$LOGIN_RESP" | head -1)"
+REFRESH_TOKEN=$(echo "$LOGIN_RESP" | head -1 | jq -r '.tokens.refreshToken // empty')
 pass "Login OK, token extracted"
 
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
 # ─── Step 3: Validate token ──────────────────────────────────────────────────
 STEP=3
-echo "--- Step $STEP: GET /api/v1/auth/validate"
+echo "--- Step $STEP: POST /api/v1/auth/validate"
 VALIDATE_RESP=$(curl -sf -w "\n%{http_code}" \
-    "$KONG_URL/api/v1/auth/validate" \
-    -H "$AUTH_HEADER" \
+    -X POST "$KONG_URL/api/v1/auth/validate" \
+    -H "Content-Type: application/json" \
+    -d "{\"token\":\"$TOKEN\"}" \
     || fail "curl failed")
 HTTP_CODE=$(echo "$VALIDATE_RESP" | tail -1)
 [[ "$HTTP_CODE" == "200" ]] || fail "Expected 200, got $HTTP_CODE"
+VALID=$(echo "$VALIDATE_RESP" | head -1 | jq -r '.valid')
+[[ "$VALID" == "true" ]] || fail "Token reported as invalid: $(echo "$VALIDATE_RESP" | head -1)"
 pass "Token valid"
 
 # ─── Step 4: List exercises ──────────────────────────────────────────────────
@@ -86,7 +90,7 @@ echo "--- Step $STEP: POST /api/v1/workouts"
 EXERCISE_ID=$(echo "$EXERCISES_RESP" | head -1 | jq -r 'if type == "array" then .[0].id elif .content then .content[0].id else empty end')
 [[ -n "$EXERCISE_ID" ]] || { echo "  (no exercise id found, skipping workout creation)"; EXERCISE_ID="1"; }
 
-WORKOUT_BODY="{\"name\":\"Smoke Test Workout\",\"exercises\":[{\"exerciseId\":\"$EXERCISE_ID\",\"sets\":3,\"reps\":10}]}"
+WORKOUT_BODY="{\"name\":\"Smoke Test Workout\",\"exercises\":[{\"exerciseId\":$EXERCISE_ID,\"position\":0,\"targetSets\":3,\"targetReps\":10}]}"
 WORKOUT_RESP=$(curl -sf -w "\n%{http_code}" \
     -X POST "$KONG_URL/api/v1/workouts" \
     -H "$AUTH_HEADER" \
@@ -113,8 +117,8 @@ pass "Got $WC workout(s)"
 # ─── Step 7: Create a meal ───────────────────────────────────────────────────
 STEP=7
 echo "--- Step $STEP: POST /api/v1/meals"
-TODAY=$(date -u +%Y-%m-%d)
-MEAL_BODY="{\"name\":\"Smoke Test Meal\",\"date\":\"$TODAY\",\"items\":[]}"
+TODAY=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+MEAL_BODY="{\"mealType\":\"LUNCH\",\"consumedAt\":\"$TODAY\",\"items\":[]}"
 MEAL_RESP=$(curl -sf -w "\n%{http_code}" \
     -X POST "$KONG_URL/api/v1/meals" \
     -H "$AUTH_HEADER" \
@@ -126,10 +130,11 @@ HTTP_CODE=$(echo "$MEAL_RESP" | tail -1)
 pass "Created meal (201)"
 
 # ─── Step 8: Daily nutrition stats ───────────────────────────────────────────
+TODAY_DATE=$(date -u +%Y-%m-%d)
 STEP=8
-echo "--- Step $STEP: GET /api/v1/stats/nutrition/daily?date=$TODAY"
+echo "--- Step $STEP: GET /api/v1/stats/nutrition/daily?date=$TODAY_DATE"
 STATS_RESP=$(curl -sf -w "\n%{http_code}" \
-    "$KONG_URL/api/v1/stats/nutrition/daily?date=$TODAY" \
+    "$KONG_URL/api/v1/stats/nutrition/daily?date=$TODAY_DATE" \
     -H "$AUTH_HEADER" \
     || fail "curl failed")
 HTTP_CODE=$(echo "$STATS_RESP" | tail -1)

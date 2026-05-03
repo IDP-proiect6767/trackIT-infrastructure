@@ -46,11 +46,13 @@ services:
   auth-service:
     image: florinionita/trackit-auth-service:${AUTH_IMAGE_TAG:-latest}
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DB_NAME:-auth_db}
-      SPRING_DATASOURCE_USERNAME: ${AUTH_DB_USER:-auth_user}
-      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
-      JWT_SECRET: ${AUTH_JWT_SECRET}
-      SERVER_PORT: 8081
+      AUTH_DB_URL: jdbc:postgresql://auth-db:5432/${AUTH_DB_NAME:-auth_db}
+      AUTH_DB_USER: ${AUTH_DB_USER:-auth_user}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      AUTH_JWT_ACCESS_TTL: ${AUTH_JWT_ACCESS_TTL:-900}
+      AUTH_JWT_REFRESH_TTL: ${AUTH_JWT_REFRESH_TTL:-604800}
+      SPRING_PROFILES_ACTIVE: docker
     networks:
       - frontend-net
       - db-net
@@ -67,7 +69,7 @@ services:
     environment:
       AUTH_SERVICE_URL: http://auth-service:8081
       DATA_SERVICE_URL: http://data-service:8083
-      SERVER_PORT: 8082
+      SPRING_PROFILES_ACTIVE: docker
     networks:
       - frontend-net
       - backend-net
@@ -82,10 +84,10 @@ services:
   data-service:
     image: florinionita/trackit-data-service:${DATA_IMAGE_TAG:-latest}
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://data-db:5432/${DATA_DB_NAME:-data_db}
-      SPRING_DATASOURCE_USERNAME: ${DATA_DB_USER:-data_user}
-      SPRING_DATASOURCE_PASSWORD: ${DATA_DB_PASSWORD}
-      SERVER_PORT: 8083
+      DATA_DB_URL: jdbc:postgresql://data-db:5432/${DATA_DB_NAME:-data_db}
+      DATA_DB_USER: ${DATA_DB_USER:-data_user}
+      DATA_DB_PASSWORD: ${DATA_DB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: docker
     networks:
       - backend-net
       - db-net
@@ -131,7 +133,7 @@ services:
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@trackit.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@trackit.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
